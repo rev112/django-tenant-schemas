@@ -1,3 +1,4 @@
+import copy
 from django.conf import settings
 from django.db import connection
 from south import migration
@@ -14,47 +15,25 @@ class Command(SyncCommon):
     def handle_noargs(self, **options):
         super(Command, self).handle_noargs(**options)
 
+        # save original settings
+        OLD_INSTALLED_APPS = copy.copy(settings.INSTALLED_APPS)
+
         if self.sync_public:
             self.migrate_public_apps()
         if self.sync_tenant:
             self.migrate_tenant_apps(self.schema_name)
 
-    def _set_managed_apps(self, included_apps, excluded_apps):
-        """ while sync_schemas works by setting which apps are managed, on south we set which apps should be ignored """
-        ignored_apps = []
-        if excluded_apps:
-            for item in excluded_apps:
-                if item not in included_apps:
-                    ignored_apps.append(item)
-
-        for app in ignored_apps:
-            app_label = app.split('.')[-1]
-            settings.SOUTH_MIGRATION_MODULES[app_label] = 'ignore'
-
-    def _save_south_settings(self):
-        self._old_south_modules = None
-        if hasattr(settings, "SOUTH_MIGRATION_MODULES") and settings.SOUTH_MIGRATION_MODULES is not None:
-            self._old_south_modules = settings.SOUTH_MIGRATION_MODULES.copy()
-        else:
-            settings.SOUTH_MIGRATION_MODULES = dict()
-
-    def _restore_south_settings(self):
-        settings.SOUTH_MIGRATION_MODULES = self._old_south_modules
-
-    def _clear_south_cache(self):
-        for mig in list(migration.all_migrations()):
-            delattr(mig._application, "migrations")
-        Migrations._clear_cache()
+        # restore settings
+        self._reset_app_cache()
+        settings.INSTALLED_APPS = OLD_INSTALLED_APPS
 
     def _migrate_schema(self, tenant):
         connection.set_tenant(tenant, include_public=False)
         MigrateCommand().execute(**self.options)
 
     def migrate_tenant_apps(self, schema_name=None):
-        self._save_south_settings()
-
         apps = self.tenant_apps or self.installed_apps
-        self._set_managed_apps(included_apps=apps, excluded_apps=self.shared_apps)
+        self._set_managed_apps(included_apps=apps)
 
         if schema_name:
             self._notice("=== Running migrate for schema: %s" % schema_name)
@@ -71,16 +50,9 @@ class Command(SyncCommon):
                 self._notice("=== Running migrate for schema %s" % tenant.schema_name)
                 self._migrate_schema(tenant)
 
-        self._restore_south_settings()
-
     def migrate_public_apps(self):
-        self._save_south_settings()
-
         apps = self.shared_apps or self.installed_apps
-        self._set_managed_apps(included_apps=apps, excluded_apps=self.tenant_apps)
+        self._set_managed_apps(included_apps=apps)
 
         self._notice("=== Running migrate for schema public")
         MigrateCommand().execute(**self.options)
-
-        self._clear_south_cache()
-        self._restore_south_settings()
