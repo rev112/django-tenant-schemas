@@ -39,18 +39,6 @@ class Command(SyncCommon):
         self._reset_app_cache()
         settings.INSTALLED_APPS = OLD_INSTALLED_APPS
 
-    def _reset_app_cache(self):
-        AppCache().loaded = False
-        AppCache().app_store = SortedDict()
-        #AppCache().app_models = SortedDict()
-        AppCache().app_errors = {}
-        AppCache().handled = {}
-
-    def _set_managed_apps(self, included_apps):
-        """ sets which apps are managed by syncdb """
-        self._reset_app_cache()
-        settings.INSTALLED_APPS = included_apps
-
     def _sync_tenant(self, tenant):
         self._notice("=== Running syncdb for schema: %s" % tenant.schema_name)
         connection.set_tenant(tenant, include_public=False)

@@ -4,6 +4,8 @@ from django.core.management import call_command, get_commands, load_command_clas
 from django.core.management.base import BaseCommand, NoArgsCommand, CommandError
 from django.db import connection
 from django.utils.six.moves import input
+from django.db.models.loading import AppCache
+from django.utils.datastructures import SortedDict
 from tenant_schemas.utils import get_tenant_model, get_public_schema_name
 
 
@@ -155,3 +157,14 @@ class SyncCommon(NoArgsCommand):
 
     def _notice(self, output):
         self.stdout.write(self.style.NOTICE(output))
+
+    def _reset_app_cache(self):
+        AppCache().loaded = False
+        AppCache().app_store = SortedDict()
+        AppCache().app_errors = {}
+        AppCache().handled = {}
+
+    def _set_managed_apps(self, included_apps):
+        """ sets which apps are managed by syncdb """
+        self._reset_app_cache()
+        settings.INSTALLED_APPS = included_apps
