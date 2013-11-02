@@ -1,6 +1,10 @@
+import copy
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import get_apps, get_models
+from django.db.models.loading import AppCache
+from django.utils.datastructures import SortedDict
+
 if "south" in settings.INSTALLED_APPS:
     from south.management.commands.syncdb import Command as SyncdbCommand
 else:
@@ -21,9 +25,9 @@ class Command(SyncCommon):
             self.options["migrate"] = False
 
         # save original settings
-        for model in get_models(include_auto_created=True):
-            setattr(model._meta, 'was_managed', model._meta.managed)
+        OLD_INSTALLED_APPS = copy.copy(settings.INSTALLED_APPS)
 
+        # clear content type's cache as they might different on a tenant
         ContentType.objects.clear_cache()
 
         if self.sync_public:
@@ -32,22 +36,20 @@ class Command(SyncCommon):
             self.sync_tenant_apps(self.schema_name)
 
         # restore settings
-        for model in get_models(include_auto_created=True):
-            model._meta.managed = model._meta.was_managed
+        self._reset_app_cache()
+        settings.INSTALLED_APPS = OLD_INSTALLED_APPS
+
+    def _reset_app_cache(self):
+        AppCache().loaded = False
+        AppCache().app_store = SortedDict()
+        #AppCache().app_models = SortedDict()
+        AppCache().app_errors = {}
+        AppCache().handled = {}
 
     def _set_managed_apps(self, included_apps):
         """ sets which apps are managed by syncdb """
-        for model in get_models(include_auto_created=True):
-            model._meta.managed = False
-
-        verbosity = int(self.options.get('verbosity'))
-        for app_model in get_apps():
-            app_name = app_model.__name__.replace('.models', '')
-            if hasattr(app_model, 'models') and app_name in included_apps:
-                for model in get_models(app_model, include_auto_created=True):
-                    model._meta.managed = model._meta.was_managed
-                    if model._meta.managed and verbosity >= 3:
-                        self._notice("=== Include Model: %s: %s" % (app_name, model.__name__))
+        self._reset_app_cache()
+        settings.INSTALLED_APPS = included_apps
 
     def _sync_tenant(self, tenant):
         self._notice("=== Running syncdb for schema: %s" % tenant.schema_name)
