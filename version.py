@@ -33,6 +33,7 @@
 
 __all__ = ("get_git_version")
 
+import os
 from subprocess import Popen, PIPE
 
 
@@ -69,6 +70,21 @@ def write_release_version(version):
     f.close()
 
 
+def base_working_directory(f):
+    """A decorator which changes the working directory to the file directory, and then changes it back on exit."""
+    base_dir = os.path.dirname(os.path.realpath(__file__))
+
+    def wrapper(*args, **kwargs):
+        prev_cwd = os.getcwd()
+        os.chdir(base_dir)
+        try:
+            return f(*args, **kwargs)
+        finally:
+            os.chdir(prev_cwd)
+    return wrapper
+
+
+@base_working_directory
 def get_git_version():
     # Read in the version that's currently in VERSION.
 
